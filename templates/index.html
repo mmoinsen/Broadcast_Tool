@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broadcast-Web UI</title>
+    <script src="/static/script/script.js"></script>
+    <link type="text/css" rel="stylesheet" href="/static/stylesheet/style.css"/> </head>
+<body>
+
+    <h1>Broadcast-Web UI</h1>
+
+    <div class="dashboard-container">
+        <div class="card" onclick="openMessageModal()">
+            Neue Nachricht verfassen
+        </div>
+        
+        <div class="card" onclick="openHistoryModal()">
+            Nachrichten Verlauf
+        </div>
+    </div>
+
+    <div id="messageModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeAllModals()">&times;</span>
+            <h2>Neue Nachricht</h2>
+            <form class="input-area" id="messageForm" action="" method="POST">
+                <textarea id="msgText" name="content" placeholder="Hier die Nachricht zum Senden eingeben:" required></textarea>
+                <button class="send-btn" type="submit">Senden</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content history-content">
+            <span class="close-btn" onclick="closeAllModals()">&times;</span>
+            <h2>Gesendete Nachrichten</h2>
+            
+            <div id="historyMessagesList">
+                </div>
+        </div>
+    </div>
+
+</body>
+</html>
