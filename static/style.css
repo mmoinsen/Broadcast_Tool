@@ -173,6 +173,8 @@ textarea:focus {
     font-size: 1rem;
     color: #333;
     line-height: 1.4;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 /* --- LÖSCHEN BUTTON (MÜLLEIMER) --- */
