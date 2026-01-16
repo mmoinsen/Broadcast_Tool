@@ -174,3 +174,35 @@ textarea:focus {
     color: #333;
     line-height: 1.4;
 }
+
+/* --- LÖSCHEN BUTTON (MÜLLEIMER) --- */
+
+/* Damit wir den Button absolut positionieren können */
+.history-item {
+    position: relative; 
+    transition: background-color 0.2s;
+}
+
+/* Der Mülleimer Button */
+.delete-btn {
+    display: none; /* Standardmäßig unsichtbar */
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    color: #e74c3c; /* Rot */
+    background: none;
+    border: none;
+    padding: 0;
+}
+
+/* Wenn man über die Nachricht fährt, zeige den Button */
+.history-item:hover .delete-btn {
+    display: flex;
+    justify-content: center;
+}
+
+.delete-btn:hover {
+    transform: scale(1.2); /* Wird beim Drüberfahren etwas größer */
+}

@@ -1,5 +1,5 @@
 # flask --app main run
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 app = Flask(__name__)
@@ -21,6 +21,36 @@ def start_page():
         db.session.add(new_message)
         db.session.commit()
     return render_template('index.html')
+
+@app.route("/get_history",methods=['GET'])
+def get_History():
+    messages = Message.query.order_by(Message.created_at.desc()).all()
+
+    history_data = []
+    for msg in messages:
+        if msg.created_at:
+            zeit = msg.created_at.strftime("%d.%m.%Y, %H:%M Uhr")
+        else:
+            zeit = "--.--.----, --:-- Uhr"
+
+        history_data.append({
+            'id': msg.id,
+            'time': zeit,
+            'message': msg.content
+        })
+    return jsonify(history_data)
+
+@app.route("/delete_message/<int:id>", methods=['DELETE'])
+def delete_message(id):
+    msg_to_delete = Message.query.get_or_404(id)
+
+    try:
+        db.session.delete(msg_to_delete)
+        db.session.commit()
+        return jsonify({'success': True, 'message:': 'Gelöscht'})
+    except:
+        return jsonify({'success': False, 'message': 'Fehler beim Löschen'}), 500
+
 
 if __name__ == "__main__":
     with app.app_context():
