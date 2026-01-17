@@ -1,5 +1,5 @@
 {
-  "server_ip": "http://172.0.0.1",
+  "server_ip": "http://192.168.178.180",
   "server_port": "8000",
   "check_interval_seconds": 10,
   "show_history_on_startup": false

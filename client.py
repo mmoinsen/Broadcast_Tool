@@ -34,7 +34,7 @@ def start_client():
 
     hostname = socket.gethostname()
     
-    server_url = f"http://{config['server_ip']}:{config['server_port']}/get_history"
+    server_url = f"{config['server_ip']}:{config['server_port']}/get_history"
     interval = config['check_interval_seconds']
     
     print(f"--- BROADCAST CLIENT ---")
@@ -50,13 +50,26 @@ def start_client():
     if last_seen_id == 0 and not config.get('show_history_on_startup', True):
         try:
             print("Initialisierung... überspringe alte Nachrichten.")
-            resp = requests.get(server_url)
-            data = resp.json()
-            if data:
-                
-                max_id = max(msg['id'] for msg in data)
-                last_seen_id = max_id
-                save_last_seen_id(last_seen_id)
+            
+            # WICHTIG: Hier timeout=5 ergänzen!
+            resp = requests.get(server_url, timeout=5) 
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                # Prüfen, ob überhaupt Daten da sind, sonst crasht max()
+                if data and len(data) > 0:
+                    max_id = max(msg['id'] for msg in data)
+                    last_seen_id = max_id
+                    save_last_seen_id(last_seen_id)
+                    print(f"Initialisierung fertig. Start-ID gesetzt auf: {last_seen_id}")
+                else:
+                    print("Keine alten Nachrichten gefunden. Starte bei 0.")
+            else:
+                print(f"Warnung: Server antwortete mit Status {resp.status_code}")
+
+        except requests.exceptions.ConnectionError:
+            print(">> FEHLER: Server nicht erreichbar. Ist main.py gestartet?")
+            print(">> Das Programm macht weiter, wird aber vermutlich gleich wieder Fehler werfen.")
         except Exception as e:
             print(f"Fehler bei Initialisierung: {e}")
 
