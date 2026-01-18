@@ -1,0 +1,42 @@
+name: Build Broadcast Client
+
+on:
+  push:
+    tags:
+      - 'v*' # Startet nur, wenn du einen Tag (z.B. v1.0) pushst
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk libappindicator3-1 gir1.2-appindicator3-0.1
+
+    - name: Install Python Libraries
+      run: |
+        pip install customtkinter pystray Pillow requests pyinstaller
+
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller --noconsole --onefile --name="BroadcastClient_${{ runner.os }}" client_gui.py
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: BroadcastClient-${{ runner.os }}
+        path: dist/
