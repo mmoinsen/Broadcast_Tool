@@ -48,7 +48,7 @@ class NetNotifyClient:
         self.config = self.load_config()
         self.running = True
         self.icon = None
-        self.last_seen_id = self.get_last_seen_id()
+        self.last_seen_timestamp = 0.0
         self.hostname = socket.gethostname()
         
         self.root = ctk.CTk()
@@ -123,20 +123,17 @@ class NetNotifyClient:
                     
                     if messages:
                         # Sortieren: Älteste zuerst
-                        messages.sort(key=lambda x: x['id'])
+                        messages.sort(key=lambda x: x['timestamp'])
                         
                         # Neue Nachrichten filtern
-                        new_msgs = [m for m in messages if m['id'] > self.last_seen_id]
+                        new_msgs = [m for m in messages if m['timestamp'] > self.last_seen_timestamp]
                         
-                        # --- FIX: KEIN AUTO-RESET ---
-                        # Wenn new_msgs leer ist, obwohl Nachrichten da sind (d.h. alle IDs < last_seen_id),
-                        # machen wir NICHTS. Das passiert, wenn du eine Nachricht löschst.
-                        # Der Client behält einfach seinen hohen Zählerstand.
                         
                         for msg in new_msgs:
-                            logging.info(f"Empfange ID {msg['id']}")
+                            logging.info(f"Neue Nachricht empfangen (Zeit: {msg['timestamp']})")
                             self.root.after(0, lambda m=msg: self.show_popup(m))
-                            self.save_last_seen_id(msg['id'])
+                            self.last_seen_timestamp = msg['timestamp']
+                            self.save_last_seen_timestamp = msg ['timestamp']
                             
             except requests.exceptions.ConnectionError:
                 pass # Still bleiben bei Verbindungsfehler
