@@ -11,7 +11,7 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.String(3000), nullable=True)
     
-    created_at = db.Column(db.DateTime(), default=datetime.utcnow)
+    created_at = db.Column(db.DateTime(), default=datetime.now())
 
 @app.route("/", methods=['GET','POST'])
 def start_page():
