@@ -29,16 +29,13 @@ COLOR_TEXT_MAIN = "#f1f5f9"    # Slate-100
 COLOR_TEXT_DIM = "#94a3b8"     # Slate-400
 
 CONFIG_FILENAME = 'client_config.json'
-LAST_ID_FILENAME = 'last_id.txt'
+LAST_TIMESTAMP_FILENAME = 'last_timestamp.txt'
 
-# --- LOGGING SETUP (FIXED) ---
-# Wir nutzen einen String-Buffer für das GUI-Fenster
+# --- LOGGING SETUP ---
 LOG_STREAM = io.StringIO()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Handler explizit hinzufügen, statt basicConfig zu nutzen
-# Damit umgehen wir Probleme, falls 'requests' das Logging blockiert
 handler = logging.StreamHandler(LOG_STREAM)
 formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%H:%M:%S')
 handler.setFormatter(formatter)
@@ -46,29 +43,51 @@ logger.addHandler(handler)
 
 class NetNotifyClient:
     def __init__(self):
-        self.app_path = self.get_app_path()
-        self.config = self.load_config()
+        # Setup
         self.running = True
         self.icon = None
-        self.last_seen_timestamp = self.get_last_seen_timestamp()
         self.hostname = socket.gethostname()
         
+        # 1. Config laden (aus Install-Dir)
+        self.config = self.load_config()
+        
+        # 2. Letzten Stand laden (aus User-Dir)
+        self.last_seen_timestamp = self.get_last_seen_timestamp()
+        
+        # GUI vorbereiten (versteckt)
         self.root = ctk.CTk()
         self.root.withdraw()
         self.root.protocol("WM_DELETE_WINDOW", lambda: None)
 
-    # --- HELPER ---
-    def get_app_path(self):
+    # --- PFAD MANAGMENT (ENTERPRISE READY) ---
+    def get_install_dir(self):
+        """Pfad, wo die EXE liegt. Hier liegt die schreibgeschützte Config."""
         if getattr(sys, 'frozen', False):
             return os.path.dirname(sys.executable)
         return os.path.dirname(os.path.abspath(__file__))
 
-    def get_file_path(self, filename):
-        return os.path.join(self.app_path, filename)
+    def get_user_dir(self):
+        """Pfad im Benutzerprofil für Schreibzugriffe (last_timestamp)."""
+        app_name = "NetNotify"
+        if sys.platform == "win32":
+            # Windows: %APPDATA%\NetNotify
+            base_path = os.environ.get("APPDATA")
+        elif sys.platform == "darwin":
+            # macOS: ~/Library/Application Support/NetNotify
+            base_path = os.path.expanduser("~/Library/Application Support")
+        else:
+            # Linux: ~/.config/NetNotify
+            base_path = os.path.expanduser("~/.config")
+            
+        full_path = os.path.join(base_path, app_name)
+        if not os.path.exists(full_path):
+            try: os.makedirs(full_path)
+            except: return self.get_install_dir() # Fallback
+        return full_path
 
-    # --- CONFIG ---
+    # --- CONFIG (ADMIN / ZENTRAL) ---
     def load_config(self):
-        config_path = self.get_file_path(CONFIG_FILENAME)
+        config_path = os.path.join(self.get_install_dir(), CONFIG_FILENAME)
         default_config = {
             "server_ip": "127.0.0.1", 
             "server_port": 8080, 
@@ -81,48 +100,50 @@ class NetNotifyClient:
                     for k, v in default_config.items():
                         if k not in loaded: loaded[k] = v
                     return loaded
-            except: pass
+            except Exception as e:
+                logging.error(f"Config Ladefehler: {e}")
         return default_config
 
     def save_config(self, new_conf):
+        """Versucht Config im Install-Ordner zu speichern. Kann fehlschlagen ohne Admin-Rechte."""
+        config_path = os.path.join(self.get_install_dir(), CONFIG_FILENAME)
         try:
-            with open(self.get_file_path(CONFIG_FILENAME), 'w') as f:
+            with open(config_path, 'w') as f:
                 json.dump(new_conf, f, indent=4)
             self.config = new_conf
-            logging.info(f"Config gespeichert. Intervall: {new_conf['check_interval']}s")
+            logging.info(f"Config gespeichert: {config_path}")
             return True
+        except PermissionError:
+            logging.error("Keine Schreibrechte im Installationsverzeichnis!")
+            return False
         except Exception as e:
             logging.error(f"Config Fehler: {e}")
             return False
 
-    # --- SPEICHERT DEN TIMESTAMP STATT DER ID ---
-    
+    # --- USER STATE (PERSISTENZ) ---
     def get_last_seen_timestamp(self):
-        """Lädt den letzten Zeitstempel aus dem User-Verzeichnis."""
-        # Speichern in %APPDATA%\NetNotify\last_timestamp.txt
-        path = os.path.join(self.get_user_dir(), 'last_timestamp.txt')
-        
+        """Lädt den Zeitstempel aus dem User-Verzeichnis."""
+        path = os.path.join(self.get_user_dir(), LAST_TIMESTAMP_FILENAME)
         if os.path.exists(path):
-            try:
+            try: 
                 with open(path, 'r') as f:
                     return float(f.read().strip())
-            except Exception as e:
-                logging.error(f"Fehler beim Laden des Zeitstempels: {e}")
+            except: pass
         return 0.0
 
     def save_last_seen_timestamp(self, timestamp):
         """Speichert den Zeitstempel im User-Verzeichnis."""
-        path = os.path.join(self.get_user_dir(), 'last_timestamp.txt')
+        path = os.path.join(self.get_user_dir(), LAST_TIMESTAMP_FILENAME)
         try:
-            with open(path, 'w') as f:
-                f.write(str(timestamp))
+            with open(path, 'w') as f: f.write(str(timestamp))
+            self.last_seen_timestamp = timestamp
         except Exception as e:
-            logging.error(f"Konnte Zeitstempel nicht speichern: {e}")
+            logging.error(f"Konnte Timestamp nicht speichern: {e}")
 
     # --- NETZWERK LOGIK ---
     def check_for_messages(self):
         logging.info(f"Client gestartet. Host: {self.hostname}")
-        logging.info(f"Lade Nachrichten neuer als Timestamp: {self.last_seen_timestamp}")
+        logging.info(f"Warte auf Nachrichten neuer als: {self.last_seen_timestamp}")
         
         while self.running:
             start_time = time.time()
@@ -134,27 +155,27 @@ class NetNotifyClient:
                 
                 if resp.status_code == 200:
                     messages = resp.json()
-                    
                     if messages:
                         # Sortieren: Älteste zuerst
                         messages.sort(key=lambda x: x['timestamp'])
                         
-                        # Neue Nachrichten filtern
+                        # Nur Nachrichten neuer als gespeicherter Timestamp
                         new_msgs = [m for m in messages if m['timestamp'] > self.last_seen_timestamp]
                         
-                        
                         for msg in new_msgs:
-                            logging.info(f"Neue Nachricht: {msg['id']}")
+                            logging.info(f"Neue Nachricht empfangen (ID: {msg.get('id', '?')})")
+                            
+                            # GUI Update (Thread-safe)
                             self.root.after(0, lambda m=msg: self.show_popup(m))
-                            self.last_seen_timestamp = msg['timestamp']
+                            
+                            # Sofort speichern, damit es bei Crash als gelesen gilt
                             self.save_last_seen_timestamp(msg['timestamp'])
                             
             except requests.exceptions.ConnectionError:
-                pass # Still bleiben bei Verbindungsfehler
+                pass 
             except Exception as e:
                 logging.error(f"Loop Fehler: {e}")
 
-            # Smart Sleep
             while time.time() - start_time < current_interval and self.running:
                 time.sleep(1)
 
@@ -178,7 +199,7 @@ class NetNotifyClient:
         # Header
         header = ctk.CTkFrame(win, height=50, corner_radius=0, fg_color=COLOR_HEADER)
         header.pack(fill="x")
-        ctk.CTkFrame(win, height=2, corner_radius=0, fg_color=COLOR_ACCENT).pack(fill="x") # Akzentlinie
+        ctk.CTkFrame(win, height=2, corner_radius=0, fg_color=COLOR_ACCENT).pack(fill="x") 
         
         lbl_title = ctk.CTkLabel(header, text="NEUE NACHRICHT", font=("Roboto Medium", 15), text_color=COLOR_ACCENT)
         lbl_title.place(relx=0.5, rely=0.5, anchor="center")
@@ -208,7 +229,7 @@ class NetNotifyClient:
     def open_settings(self):
         win = ctk.CTkToplevel(self.root)
         win.title("Einstellungen")
-        self.center_window(win, 400, 480) # Etwas höher für den Reset Button
+        self.center_window(win, 400, 480)
         win.grab_set()
         
         ctk.CTkLabel(win, text="Konfiguration", font=("Roboto Medium", 18), text_color=COLOR_TEXT_MAIN).pack(pady=20)
@@ -242,6 +263,8 @@ class NetNotifyClient:
                 if self.save_config(new_conf):
                     status_lbl.configure(text="Gespeichert!", text_color=COLOR_ACCENT)
                     win.after(1000, win.destroy)
+                else:
+                    status_lbl.configure(text="Fehler: Keine Schreibrechte (Admin)!", text_color="orange")
             except ValueError:
                 status_lbl.configure(text="Ungültige Eingabe!", text_color="red")
 
@@ -249,17 +272,15 @@ class NetNotifyClient:
                       text_color="black", command=save).pack(pady=10)
 
         # --- RESET FUNCTION ---
-        ctk.CTkFrame(win, height=1, fg_color="#334155").pack(fill="x", padx=30, pady=15) # Trennlinie
+        ctk.CTkFrame(win, height=1, fg_color="#334155").pack(fill="x", padx=30, pady=15)
 
         def reset_client():
-            self.last_seen_id = 0
-            self.save_last_seen_id(0)
-            status_lbl.configure(text="Client zurückgesetzt! (ID=0)", text_color="orange")
-            logging.warning("Benutzer hat Client-ID manuell zurückgesetzt.")
+            self.save_last_seen_timestamp(0.0)
+            status_lbl.configure(text="Status zurückgesetzt! (Zeigt alle)", text_color="orange")
+            logging.warning("Benutzer hat 'Gelesen'-Status zurückgesetzt.")
 
-        ctk.CTkButton(win, text="Reset Nachrichten-ID", fg_color="#ef4444", hover_color="#dc2626", 
+        ctk.CTkButton(win, text="Verlauf zurücksetzen (Alles neu anzeigen)", fg_color="#ef4444", hover_color="#dc2626", 
                       text_color="white", command=reset_client).pack(pady=(0, 20))
-
 
     # --- HISTORY WINDOW ---
     def open_history(self):
@@ -273,7 +294,7 @@ class NetNotifyClient:
         try:
             url = f"http://{self.config['server_ip']}:{self.config['server_port']}/get_history"
             msgs = requests.get(url, timeout=2).json()
-            msgs.sort(key=lambda x: x['id'], reverse=True) # Neueste oben
+            msgs.sort(key=lambda x: x['timestamp'], reverse=True) # Neueste oben
             
             if not msgs: ctk.CTkLabel(scroll, text="Keine Nachrichten.").pack()
             
@@ -283,13 +304,13 @@ class NetNotifyClient:
                 
                 top = ctk.CTkFrame(card, fg_color="transparent", height=20)
                 top.pack(fill="x", padx=10, pady=(10,0))
-                ctk.CTkLabel(top, text=f"ID: {msg['id']}", font=("Roboto", 10, "bold"), text_color=COLOR_ACCENT).pack(side="left")
+                ctk.CTkLabel(top, text=f"ID: {msg.get('id','?')}", font=("Roboto", 10, "bold"), text_color=COLOR_ACCENT).pack(side="left")
                 ctk.CTkLabel(top, text=msg.get('time',''), font=("Roboto", 10), text_color=COLOR_TEXT_DIM).pack(side="right")
                 
                 ctk.CTkLabel(card, text=msg['message'], font=("Roboto", 13), text_color=COLOR_TEXT_MAIN, 
                              justify="left", anchor="w", wraplength=480).pack(padx=10, pady=(5,10), fill="x")
         except:
-            ctk.CTkLabel(scroll, text="Verbindungsfehler", text_color="red").pack()
+            ctk.CTkLabel(scroll, text="Verbindungsfehler zum Server", text_color="red").pack()
 
     # --- INFO / LOG WINDOW ---
     def open_info(self):
@@ -298,15 +319,16 @@ class NetNotifyClient:
         self.center_window(win, 600, 450)
         
         ctk.CTkLabel(win, text=f"Host: {self.hostname}", text_color=COLOR_TEXT_DIM).pack(pady=(10,5))
+        ctk.CTkLabel(win, text=f"Config: {self.get_install_dir()}", font=("Arial", 10), text_color=COLOR_TEXT_DIM).pack()
+        ctk.CTkLabel(win, text=f"User Data: {self.get_user_dir()}", font=("Arial", 10), text_color=COLOR_TEXT_DIM).pack(pady=(0,10))
         
         # Log Box
-        log_box = ctk.CTkTextbox(win, font=("Consolas", 11), fg_color="#000000", text_color="#22c55e") # Matrix Green
+        log_box = ctk.CTkTextbox(win, font=("Consolas", 11), fg_color="#000000", text_color="#22c55e") 
         log_box.pack(fill="both", expand=True, padx=10, pady=10)
         
-        # Inhalt laden
         log_content = LOG_STREAM.getvalue()
         log_box.insert("1.0", log_content)
-        log_box.see("end") # Auto-Scroll
+        log_box.see("end") 
         log_box.configure(state="disabled")
 
     # --- TRAY ---
