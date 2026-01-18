@@ -1,3 +1,5 @@
+# pyinstaller --noconsole --onefile --name="BroadcastClient" client_gui.py
+
 import sys
 import os
 import json
