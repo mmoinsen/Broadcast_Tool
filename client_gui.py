@@ -50,7 +50,7 @@ class NetNotifyClient:
         self.config = self.load_config()
         self.running = True
         self.icon = None
-        self.last_seen_timestamp = 0.0
+        self.last_seen_timestamp = self.get_last_seen_timestamp()
         self.hostname = socket.gethostname()
         
         self.root = ctk.CTk()
@@ -95,22 +95,34 @@ class NetNotifyClient:
             logging.error(f"Config Fehler: {e}")
             return False
 
-    def get_last_seen_id(self):
-        path = self.get_file_path(LAST_ID_FILENAME)
+    # --- SPEICHERT DEN TIMESTAMP STATT DER ID ---
+    
+    def get_last_seen_timestamp(self):
+        """Lädt den letzten Zeitstempel aus dem User-Verzeichnis."""
+        # Speichern in %APPDATA%\NetNotify\last_timestamp.txt
+        path = os.path.join(self.get_user_dir(), 'last_timestamp.txt')
+        
         if os.path.exists(path):
-            try: return int(open(path).read().strip())
-            except: return 0
-        return 0
+            try:
+                with open(path, 'r') as f:
+                    return float(f.read().strip())
+            except Exception as e:
+                logging.error(f"Fehler beim Laden des Zeitstempels: {e}")
+        return 0.0
 
-    def save_last_seen_id(self, msg_id):
+    def save_last_seen_timestamp(self, timestamp):
+        """Speichert den Zeitstempel im User-Verzeichnis."""
+        path = os.path.join(self.get_user_dir(), 'last_timestamp.txt')
         try:
-            with open(self.get_file_path(LAST_ID_FILENAME), 'w') as f: f.write(str(msg_id))
-            self.last_seen_id = msg_id
-        except: pass
+            with open(path, 'w') as f:
+                f.write(str(timestamp))
+        except Exception as e:
+            logging.error(f"Konnte Zeitstempel nicht speichern: {e}")
 
     # --- NETZWERK LOGIK ---
     def check_for_messages(self):
         logging.info(f"Client gestartet. Host: {self.hostname}")
+        logging.info(f"Lade Nachrichten neuer als Timestamp: {self.last_seen_timestamp}")
         
         while self.running:
             start_time = time.time()
@@ -132,10 +144,10 @@ class NetNotifyClient:
                         
                         
                         for msg in new_msgs:
-                            logging.info(f"Neue Nachricht empfangen (Zeit: {msg['timestamp']})")
+                            logging.info(f"Neue Nachricht: {msg['id']}")
                             self.root.after(0, lambda m=msg: self.show_popup(m))
                             self.last_seen_timestamp = msg['timestamp']
-                            self.save_last_seen_timestamp = msg ['timestamp']
+                            self.save_last_seen_timestamp(msg['timestamp'])
                             
             except requests.exceptions.ConnectionError:
                 pass # Still bleiben bei Verbindungsfehler
